@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from queue import Queue
 from typing import Dict
-
+from prisma import Prisma
 
 class MessageStatus(Enum):
     PENDING = "pending"
@@ -28,29 +28,29 @@ class AppendOption:
 
 
 class Message:
-    def __init__(self, id: str, role: MessageRole, content: str | None, parent: str | None,
-                 status: MessageStatus | None, external_id: str):
+    def __init__(self, id: str, role: MessageRole, content: str | None, parent_id: str | None,
+                 status: MessageStatus | None, external_id: str | None):
         """
         :param id: the UUID of the message, which is a unique identifier in the database.
         :param role: the role of the message. It can be "user", "assistant", "system".
         :param content: the content of the message.
-        :param parent: the parent message of the message. If it is None, this message is a root message (system prompt).
+        :param parent_id: the parent message of the message. If it is None, this message is a root message (system prompt).
         :param status: the status of the message.
         :param external_id: the source ID of the message, such as "telegram:1234567890".
         """
         self._id = id
         self._role = role
         self._content = content
-        self._parent = parent
+        self._parent_id = parent_id
         self._status = status
         self._external_id = external_id
         # Use queue to store the tokens of the message.
-        self._tokens = Queue()
+        self._tokens: Queue[str | None] = Queue()
 
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> str:
         next_token = self._tokens.get()
         if next_token is None:
             raise StopIteration
@@ -89,8 +89,8 @@ class Message:
         return self._content
 
     @property
-    def parent(self) -> str | None:
-        return self._parent
+    def parent_id(self) -> str | None:
+        return self._parent_id
 
     @property
     def status(self) -> MessageStatus | None:
@@ -101,7 +101,7 @@ class Message:
         self._status = value
 
     @property
-    def external_id(self) -> str:
+    def external_id(self) -> str | None:
         return self._external_id
 
     @external_id.setter
@@ -112,8 +112,9 @@ class Message:
 class Core:
     def __init__(self):
         self._messages: Dict[str, Message] = {}
+        self._client = Prisma()
 
-    def append(self, parent: Message | str | None, opt: AppendOption) -> Message:
+    async def append(self, parent: Message | str | None, opt: AppendOption) -> Message:
         """
         Append a message to the parent message.
         :param parent: the parent message object or the source ID of the message.
@@ -137,8 +138,7 @@ class Core:
         else:
             raise Exception("Invalid message role.")
         parent_id = parent.id if isinstance(parent, Message) else parent
-        new_message = Message(id=str(uuid.uuid4()), role=opt.role, content=opt.content, parent=parent_id, status=None,
-                              external_id=opt.external_id)
+        new_message = Message(id=str(uuid.uuid4()), role=opt.role, content=opt.content, parent_id=parent_id, status=None, external_id=opt.external_id)
         if opt.role == MessageRole.ASSISTANT:
             new_message.status = MessageStatus.PENDING
             threading.Thread(target=fake_api, args=(new_message,)).start()
@@ -153,17 +153,3 @@ def fake_api(message: Message):
         time.sleep(1)
     message.finish()
     message.status = MessageStatus.FINISHED
-
-
-if __name__ == "__main__":
-
-    core = Core()
-    system_message = core.append(None, AppendOption(role=MessageRole.SYSTEM, content="You are a helpful assistant."))
-    print(system_message)
-    user_message = core.append(system_message, AppendOption(role=MessageRole.USER, content="Count from 0 to 9."))
-    print(user_message)
-    assistant_message = core.append(user_message, AppendOption(role=MessageRole.ASSISTANT))
-    for token in assistant_message:
-        print(f"Current status: {assistant_message.status}")
-        print(f"The newly generated token is: {token}")
-    print(assistant_message)
