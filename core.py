@@ -1,11 +1,13 @@
+import threading
 import time
 import uuid
-import threading
 from dataclasses import dataclass
 from enum import Enum
 from queue import Queue
 from typing import Dict
+
 from prisma import Prisma
+
 
 class MessageStatus(Enum):
     PENDING = "pending"
@@ -28,8 +30,15 @@ class AppendOption:
 
 
 class Message:
-    def __init__(self, id: str, role: MessageRole, content: str | None, parent_id: str | None,
-                 status: MessageStatus | None, external_id: str | None):
+    def __init__(
+        self,
+        id: str,
+        role: MessageRole,
+        content: str | None,
+        parent_id: str | None,
+        status: MessageStatus | None,
+        external_id: str | None,
+    ):
         """
         :param id: the UUID of the message, which is a unique identifier in the database.
         :param role: the role of the message. It can be "user", "assistant", "system".
@@ -57,8 +66,10 @@ class Message:
         return next_token
 
     def __repr__(self):
-        return f"Message(id={self._id}, role={self._role.value}, content={self._content}, " \
-               f"status={self._status}, external_id={self._external_id})"
+        return (
+            f"Message(id={self._id}, role={self._role.value}, content={self._content}, "
+            f"status={self._status}, external_id={self._external_id})"
+        )
 
     def append_token(self, token: str):
         """
@@ -138,7 +149,14 @@ class Core:
         else:
             raise Exception("Invalid message role.")
         parent_id = parent.id if isinstance(parent, Message) else parent
-        new_message = Message(id=str(uuid.uuid4()), role=opt.role, content=opt.content, parent_id=parent_id, status=None, external_id=opt.external_id)
+        new_message = Message(
+            id=str(uuid.uuid4()),
+            role=opt.role,
+            content=opt.content,
+            parent_id=parent_id,
+            status=None,
+            external_id=opt.external_id,
+        )
         if opt.role == MessageRole.ASSISTANT:
             new_message.status = MessageStatus.PENDING
             threading.Thread(target=fake_api, args=(new_message,)).start()
