@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time
 import uuid
@@ -7,6 +8,7 @@ from queue import Queue
 from typing import Dict
 
 from prisma import Prisma
+from prisma.models import Message as PrismaMessage
 
 
 class MessageStatus(Enum):
@@ -32,28 +34,9 @@ class AppendOption:
 class Message:
     def __init__(
         self,
-        id: str,
-        role: MessageRole,
-        content: str | None,
-        parent_id: str | None,
-        status: MessageStatus | None,
-        external_id: str | None,
+        prisma_message: PrismaMessage,
     ):
-        """
-        :param id: the UUID of the message, which is a unique identifier in the database.
-        :param role: the role of the message. It can be "user", "assistant", "system".
-        :param content: the content of the message.
-        :param parent_id: the parent message of the message. If it is None, this message is a root message (system prompt).
-        :param status: the status of the message.
-        :param external_id: the source ID of the message, such as "telegram:1234567890".
-        """
-        self._id = id
-        self._role = role
-        self._content = content
-        self._parent_id = parent_id
-        self._status = status
-        self._external_id = external_id
-        # Use queue to store the tokens of the message.
+        self._prisma_message = prisma_message
         self._tokens: Queue[str | None] = Queue()
 
     def __iter__(self):
@@ -67,8 +50,8 @@ class Message:
 
     def __repr__(self):
         return (
-            f"Message(id={self._id}, role={self._role.value}, content={self._content}, "
-            f"status={self._status}, external_id={self._external_id})"
+            f"Message(id={self.id}, role={self.role.value}, content={self.content}, "
+            f"status={self.status}, external_id={self.external_id})"
         )
 
     def append_token(self, token: str):
@@ -76,9 +59,9 @@ class Message:
         Append a token to the message.
         :param token: the token to append.
         """
-        if self._content is None:
-            self._content = ""
-        self._content += token
+        if self.content is None:
+            self.content = ""
+        self.content += token
         self._tokens.put(token)
 
     def finish(self):
@@ -89,41 +72,76 @@ class Message:
 
     @property
     def id(self) -> str:
-        return self._id
+        return self._prisma_message.id
 
     @property
     def role(self) -> MessageRole:
-        return self._role
+        return MessageRole(self._prisma_message.role)
 
     @property
     def content(self) -> str | None:
-        return self._content
+        return self._prisma_message.content
+
+    @content.setter
+    def content(self, value: str | None):
+        task = asyncio.create_task(
+            self._prisma_message.prisma().update(
+                data={"content": value}, where={"id": self.id}
+            )
+        )
 
     @property
     def parent_id(self) -> str | None:
-        return self._parent_id
+        return self._prisma_message.parent_id
+
+    @parent_id.setter
+    def parent_id(self, value: str | None):
+        if value is None:
+            self._prisma_message.prisma().update(
+                data={
+                    "parent": {
+                        "disconnect": True,
+                    },
+                },
+                where={"id": self.id},
+            )
+        else:
+            self._prisma_message.prisma().update(
+                data={
+                    "parent": {
+                        "connect": {
+                            "id": value,
+                        },
+                    }
+                },
+                where={"id": self.id},
+            )
 
     @property
     def status(self) -> MessageStatus | None:
-        return self._status
+        return MessageStatus(self._prisma_message.status)
 
     @status.setter
     def status(self, value: MessageStatus | None):
-        self._status = value
+        self._prisma_message.prisma().update(
+            data={"status": None if value is None else value.value}, where={"id": self.id}
+        )
 
     @property
     def external_id(self) -> str | None:
-        return self._external_id
+        return self._prisma_message.external_id
 
     @external_id.setter
     def external_id(self, value: str):
-        self._external_id = value
+        self._prisma_message.prisma().update(
+            data={"external_id": value}, where={"id": self.id}
+        )
 
 
 class Core:
     def __init__(self):
         self._messages: Dict[str, Message] = {}
-        self._client = Prisma()
+        self._client = Prisma(auto_register=True)
 
     async def append(self, parent: Message | str | None, opt: AppendOption) -> Message:
         """
@@ -150,12 +168,16 @@ class Core:
             raise Exception("Invalid message role.")
         parent_id = parent.id if isinstance(parent, Message) else parent
         new_message = Message(
-            id=str(uuid.uuid4()),
-            role=opt.role,
-            content=opt.content,
-            parent_id=parent_id,
-            status=None,
-            external_id=opt.external_id,
+            await self._client.message.create(
+                {
+                    "id": str(uuid.uuid4()),
+                    "role": opt.role.value,
+                    "content": opt.content,
+                    "parent_id": parent_id,
+                    "status": None,
+                    "external_id": opt.external_id,
+                }
+            )
         )
         if opt.role == MessageRole.ASSISTANT:
             new_message.status = MessageStatus.PENDING
