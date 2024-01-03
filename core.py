@@ -1,10 +1,7 @@
 import asyncio
-import threading
-import time
 import uuid
+from asyncio import Queue
 from dataclasses import dataclass
-from enum import Enum
-from queue import Queue
 from typing import Dict
 
 from prisma import Prisma
@@ -34,13 +31,13 @@ class Message:
         self._prisma_message = prisma_message
         self._tokens: Queue[str | None] = Queue()
 
-    def __iter__(self):
+    def __aiter__(self):
         return self
 
-    def __next__(self) -> str:
-        next_token = self._tokens.get()
+    async def __anext__(self) -> str:
+        next_token = await self._tokens.get()
         if next_token is None:
-            raise StopIteration
+            raise StopAsyncIteration
         return next_token
 
     def __repr__(self):
@@ -59,11 +56,11 @@ class Message:
         self.content += token
         self._tokens.put(token)
 
-    def finish(self):
+    async def finish(self):
         """
         Finish the message.
         """
-        self._tokens.put(None)
+        await self._tokens.put(None)
 
     @property
     def id(self) -> str:
@@ -176,12 +173,14 @@ class Core:
         )
         if opt.role == ASSISTANT:
             new_message.status = PENDING
-            threading.Thread(target=fake_api, args=(new_message,)).start()
+            task = asyncio.create_task(fake_api(new_message))
+        await new_message.await_tasks()
         self._messages[new_message.id] = new_message
         return new_message
 
 
-def fake_api(message: Message):
+async def fake_api(message: Message):
+    message.status = GENERATING
     message.status = MessageStatus.GENERATING
     for i in range(10):
         message.append_token(str(i))
