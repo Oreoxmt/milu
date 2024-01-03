@@ -181,7 +181,6 @@ class Core:
 
 async def fake_api(message: Message):
     message.status = GENERATING
-    message.status = MessageStatus.GENERATING
     for i in range(10):
         message.append_token(str(i))
         time.sleep(1)
