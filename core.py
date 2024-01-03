@@ -10,23 +10,18 @@ from typing import Dict
 from prisma import Prisma
 from prisma.models import Message as PrismaMessage
 
-
-class MessageStatus(Enum):
-    PENDING = "pending"
-    GENERATING = "generating"
-    FINISHED = "finished"
-    ERROR = "error"
-
-
-class MessageRole(Enum):
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
+PENDING = "pending"
+GENERATING = "generating"
+FINISHED = "finished"
+ERROR = "error"
+USER = "user"
+ASSISTANT = "assistant"
+SYSTEM = "system"
 
 
 @dataclass
 class AppendOption:
-    role: MessageRole
+    role: str
     content: str | None = None
     external_id: str | None = None
 
@@ -50,7 +45,7 @@ class Message:
 
     def __repr__(self):
         return (
-            f"Message(id={self.id}, role={self.role.value}, content={self.content}, "
+            f"Message(id={self.id}, role={self.role}, content={self.content}, "
             f"status={self.status}, external_id={self.external_id})"
         )
 
@@ -75,8 +70,8 @@ class Message:
         return self._prisma_message.id
 
     @property
-    def role(self) -> MessageRole:
-        return MessageRole(self._prisma_message.role)
+    def role(self) -> str | None:
+        return self._prisma_message.role
 
     @property
     def content(self) -> str | None:
@@ -118,11 +113,11 @@ class Message:
             )
 
     @property
-    def status(self) -> MessageStatus | None:
-        return MessageStatus(self._prisma_message.status)
+    def status(self) -> str | None:
+        return self._prisma_message.status
 
     @status.setter
-    def status(self, value: MessageStatus | None):
+    def status(self, value: str | None):
         self._prisma_message.prisma().update(
             data={"status": None if value is None else value.value}, where={"id": self.id}
         )
@@ -149,17 +144,17 @@ class Core:
         :param parent: the parent message object or the source ID of the message.
         :param opt: the options of the message.
         """
-        if opt.role == MessageRole.SYSTEM:
+        if opt.role == SYSTEM:
             if parent is not None:
                 raise Exception("The parent of a system message must be None.")
             if opt.content is None:
                 raise Exception("The content of a system message cannot be None.")
-        elif opt.role == MessageRole.USER:
+        elif opt.role == USER:
             if parent is None:
                 raise Exception("The parent of a user message cannot be None.")
             if opt.content is None:
                 raise Exception("The content of a user message cannot be None.")
-        elif opt.role == MessageRole.ASSISTANT:
+        elif opt.role == ASSISTANT:
             if parent is None:
                 raise Exception("The parent of an assistant message cannot be None.")
             if opt.content is not None:
@@ -171,7 +166,7 @@ class Core:
             await self._client.message.create(
                 {
                     "id": str(uuid.uuid4()),
-                    "role": opt.role.value,
+                    "role": opt.role,
                     "content": opt.content,
                     "parent_id": parent_id,
                     "status": None,
@@ -179,8 +174,8 @@ class Core:
                 }
             )
         )
-        if opt.role == MessageRole.ASSISTANT:
-            new_message.status = MessageStatus.PENDING
+        if opt.role == ASSISTANT:
+            new_message.status = PENDING
             threading.Thread(target=fake_api, args=(new_message,)).start()
         self._messages[new_message.id] = new_message
         return new_message
