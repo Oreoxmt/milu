@@ -1,6 +1,6 @@
 import asyncio
 
-from core import AppendOption, Core
+from milu.core import AppendOption, Core
 
 USER = "user"
 ASSISTANT = "assistant"
