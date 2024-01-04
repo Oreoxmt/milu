@@ -123,8 +123,13 @@ class Message:
         if len(self._tasks) > 0:
             await asyncio.gather(*self._tasks)
             self._tasks.clear()
+            self._prisma_message = await self._prisma_message.prisma().find_unique(
+                where={"id": self.id}
+            )
 
-    async def _update_prisma_message(self, data: dict[str, Any], condition: dict[str, Any] | None = None):
+    async def _update_prisma_message(
+        self, data: dict[str, Any], condition: dict[str, Any] | None = None
+    ):
         if condition is None:
             condition = {"id": self.id}
         new_message = await self._prisma_message.prisma().update(
@@ -133,7 +138,9 @@ class Message:
         if new_message is not None:
             self._prisma_message = new_message
 
-    def _schedule_update(self, data: dict[str, Any], condition: dict[str, Any] | None = None):
+    def _schedule_update(
+        self, data: dict[str, Any], condition: dict[str, Any] | None = None
+    ):
         task = asyncio.create_task(self._update_prisma_message(data, condition))
         self._tasks.add(task)
 

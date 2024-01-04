@@ -30,6 +30,7 @@ async def main() -> None:
         print(f"Current status: {assistant_message.status}")
         print(f"The newly generated token is: {token}")
         print(f"The content is: {assistant_message.content}")
+    await assistant_message.await_tasks()
     print(f"Current status: {assistant_message.status}")
     print(assistant_message)
     await db_prisma.disconnect()
