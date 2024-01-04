@@ -4,8 +4,8 @@ from asyncio import Queue
 from dataclasses import dataclass
 from typing import Any, Dict, Set
 
-from prisma import Prisma
-from prisma.models import Message as PrismaMessage
+from milu.db.prisma import Prisma
+from milu.db.prisma.models import Message as PrismaMessage
 
 PENDING = "pending"
 GENERATING = "generating"
