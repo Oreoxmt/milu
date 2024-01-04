@@ -1,0 +1,24 @@
+datasource db {
+  provider = "mysql"
+  url = env("DATABASE_URL")
+}
+
+generator db {
+  provider = "prisma-client-py"
+  output = "milu/db/prisma"
+  interface = "asyncio"
+  recursive_type_depth = -1
+}
+
+model Message {
+  id String @id @default(uuid())
+  role String
+  content String?
+  parent_id String?
+  status String?
+  external_id String?
+  parent Message? @relation("ParentChildren", fields: [parent_id], references: [id])
+  children Message[] @relation("ParentChildren")
+
+  @@map("messages")
+}
