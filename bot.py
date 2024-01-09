@@ -10,9 +10,9 @@ SYSTEM = "system"
 async def main() -> None:
     core = Core()
     db_prisma = core._client
-    print("Connecting to database...")
+    print("(bot) Connecting to database...")
     await db_prisma.connect()
-    print("Deleting all messages...")
+    print("(bot) Deleting all messages...")
     await db_prisma.message.delete_many()
     system_message = await core.append(
         None,
@@ -27,11 +27,8 @@ async def main() -> None:
     assistant_message = await core.append(user_message, AppendOption(role=ASSISTANT))
     print(assistant_message)
     async for token in assistant_message:
-        print(f"Current status: {assistant_message.status}")
-        print(f"The newly generated token is: {token}")
-        print(f"The content is: {assistant_message.content}")
+        print(f"(bot) The newly generated token is: {token}")
     await assistant_message.await_tasks()
-    print(f"Current status: {assistant_message.status}")
     print(assistant_message)
     await db_prisma.disconnect()
 
