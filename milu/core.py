@@ -3,7 +3,7 @@ import uuid
 from asyncio import Queue
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Any, Dict, Set, Type
+from typing import Dict, Type
 
 from milu.db.prisma import Prisma
 from milu.db.prisma.models import Message as PrismaMessage
@@ -35,9 +35,8 @@ class Message:
         prisma_message: PrismaMessage,
     ):
         self._prisma_message: PrismaMessage = prisma_message
-        self._data: MessageUpdateInput = {}
+        self._data: MessageUpdateInput | None = None
         self._tokens: Queue[str | None] = Queue()
-        self._tasks: Set[asyncio.Task[Any]] = set()
 
     def __aiter__(self):
         return self
@@ -49,6 +48,7 @@ class Message:
         return next_token
 
     async def __aenter__(self):
+        self._data = {}
         return self
 
     async def __aexit__(
@@ -57,12 +57,14 @@ class Message:
         exc_val: Type[Exception] | None,
         exc_tb: TracebackType | None,
     ):
+        if self._data is None:
+            raise Exception("The message is not in the context.")
         if exc_type is not None:
             print(exc_type)
             print(exc_val)
             print(exc_tb)
-        self._schedule_update(self._data, None)
-        await self.await_tasks()
+        await self._update_async(self._data, None)
+        self._data = None
 
     def __repr__(self):
         return (
@@ -75,6 +77,8 @@ class Message:
         Append a token to the message.
         :param token: the token to append.
         """
+        if self._data is None:
+            raise Exception("The message is not in the context.")
         if self.content is None:
             self.content = ""
         self.content += token
@@ -101,6 +105,8 @@ class Message:
 
     @content.setter
     def content(self, value: str | None):
+        if self._data is None:
+            raise Exception("The message is not in the context.")
         self._data["content"] = value
         self._prisma_message.content = value
 
@@ -110,6 +116,8 @@ class Message:
 
     @parent_id.setter
     def parent_id(self, value: str | None):
+        if self._data is None:
+            raise Exception("The message is not in the context.")
         parent_payload: MessageUpdateOneWithoutRelationsInput = {}
         if value is None:
             parent_payload["disconnect"] = True
@@ -124,6 +132,8 @@ class Message:
 
     @status.setter
     def status(self, value: str | None):
+        if self._data is None:
+            raise Exception("The message is not in the context.")
         self._data["status"] = value
         self._prisma_message.status = value
 
@@ -133,35 +143,20 @@ class Message:
 
     @external_id.setter
     def external_id(self, value: str):
+        if self._data is None:
+            raise Exception("The message is not in the context.")
         self._data["external_id"] = value
         self._prisma_message.external_id = value
 
-    async def await_tasks(self):
-        if len(self._tasks) > 0:
-            await asyncio.gather(*self._tasks)
-            self._tasks.clear()
-            result = await self._prisma_message.prisma().find_unique(
-                where={"id": self.id}
-            )
-            if result is not None:
-                self._prisma_message = result
-
-    async def _update_prisma_message(
+    async def _update_async(
         self, data: MessageUpdateInput, condition: MessageWhereUniqueInput | None = None
     ):
         if condition is None:
             condition = {"id": self.id}
-        new_message = await self._prisma_message.prisma().update(
-            data=data, where=condition
-        )
-        if new_message is not None:
-            self._prisma_message = new_message
-
-    def _schedule_update(
-        self, data: MessageUpdateInput, condition: MessageWhereUniqueInput | None = None
-    ):
-        task = asyncio.create_task(self._update_prisma_message(data, condition))
-        self._tasks.add(task)
+        await self._prisma_message.prisma().update(data=data, where=condition)
+        result = await self._prisma_message.prisma().find_unique(where=condition)
+        if result is not None:
+            self._prisma_message = result
 
 
 class Core:
@@ -206,9 +201,10 @@ class Core:
             )
         )
         if opt.role == ASSISTANT:
-            new_message.status = PENDING
+            async with new_message as m:
+                m.status = PENDING
+            print(f"(core.append) After m.status = PENDING: {new_message}")
             task = asyncio.create_task(fake_api(new_message))
-        await new_message.await_tasks()
         self._messages[new_message.id] = new_message
         return new_message
 
@@ -216,16 +212,16 @@ class Core:
 async def fake_api(message: Message):
     async with message as m:
         # Update the properties of prism_message directly.
-        print(f"(core) Initial m: {m}")
+        print(f"(fake_api) Initial m: {m}")
         m.status = GENERATING
-        print(f"(core) After m.status=GENERATING: {m}")
+        print(f"(fake_api) After m.status=GENERATING: {m}")
         for i in range(10):
             await m.append_token(str(i))
-            print(f"(core) After append_token({i}): {m}")
-            await asyncio.sleep(1)
+            print(f"(fake_api) After append_token({i}): {m}")
+            # await asyncio.sleep(1)
         await m.finish()
-        print(f"(core) After m.finish: {m}")
+        print(f"(fake_api) After m.finish: {m}")
         m.status = FINISHED
-        print(f"(core) After m.status=FINISHED: {m}")
+        print(f"(fake_api) After m.status=FINISHED: {m}")
     # Write the properties of prism_message to the database.
-    print(f"(core) Final m: {m}")
+    print(f"(fake_api) Final m: {m}")

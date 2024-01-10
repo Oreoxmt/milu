@@ -18,18 +18,17 @@ async def main() -> None:
         None,
         AppendOption(role=SYSTEM, content="You are a helpful assistant."),
     )
-    print(system_message)
+    print(f"(bot) system_message: {system_message}")
     user_message = await core.append(
         system_message,
         AppendOption(role=USER, content="Count from 0 to 9."),
     )
-    print(user_message)
+    print(f"(bot) user_message: {user_message}")
     assistant_message = await core.append(user_message, AppendOption(role=ASSISTANT))
-    print(assistant_message)
+    print(f"(bot) assistant_message before generating token: {assistant_message}")
     async for token in assistant_message:
-        print(f"(bot) The newly generated token is: {token}")
-    await assistant_message.await_tasks()
-    print(assistant_message)
+        print(f"(bot) Generated token: {token}")
+    print(f"(bot) assistant_message after generating token: {assistant_message}")
     await db_prisma.disconnect()
 
 
