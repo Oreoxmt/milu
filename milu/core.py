@@ -48,6 +48,8 @@ class Message:
         return next_token
 
     async def __aenter__(self):
+        if self._data is not None:
+            raise Exception("The message is already in the context.")
         self._data = {}
         return self
 
