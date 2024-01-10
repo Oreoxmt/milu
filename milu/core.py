@@ -123,12 +123,10 @@ class Message:
     def parent_id(self, value: str | None):
         if self._data is None:
             raise Exception("The message is not in the context.")
-        parent_payload: MessageUpdateOneWithoutRelationsInput = {}
         if value is None:
-            parent_payload["disconnect"] = True
+            self._data["parent"] = {"disconnect": True}
         else:
-            parent_payload["connect"] = {"id": value}
-        self._data["parent"] = parent_payload
+            self._data["parent"] = {"connect": {"id": value}}
         self._prisma_message.parent_id = value
 
     @property
@@ -223,7 +221,7 @@ async def fake_api(message: Message):
         for i in range(10):
             await m.append_token(str(i))
             print(f"(fake_api) After append_token({i}): {m}")
-            # await asyncio.sleep(1)
+            await asyncio.sleep(1)
         await m.finish()
         print(f"(fake_api) After m.finish: {m}")
         m.status = FINISHED
