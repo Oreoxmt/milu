@@ -72,7 +72,7 @@ class Message:
             f"status={self.status}, external_id={self.external_id})"
         )
 
-    async def append_token(self, token: str):
+    async def append_token(self, token: str, commit_interval: int = 2):
         """
         Append a token to the message.
         :param token: the token to append.
@@ -84,6 +84,9 @@ class Message:
         self.content += token
         self._data["content"] = self.content
         await self._tokens.put(token)
+        if len(self.content) % commit_interval == 0:
+            await self._update_async(self._data)
+            self._data = {}
 
     async def finish(self):
         """
