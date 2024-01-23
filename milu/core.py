@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 from asyncio import Queue
 from contextlib import asynccontextmanager
@@ -76,12 +77,15 @@ class Message:
 
     @asynccontextmanager
     async def append_token(self):
-        q: Queue[str | None] = Queue()
+        token_queue: Queue[str | None] = Queue()
 
         async def task():
             content = ""
             token_count = 0
-            get_new_token = asyncio.create_task(q.get())
+            commit_token_limit = 5
+            commit_time_limit = 3
+            db_last_update_time = time.monotonic()
+            get_new_token = asyncio.create_task(token_queue.get())
             update_db_content = None
             pending = {get_new_token}
             while True:
@@ -97,11 +101,15 @@ class Message:
                     content += new_token
                     token_count += 1
                     await self._tokens.put(new_token)
-                    get_new_token = asyncio.create_task(q.get())
+                    get_new_token = asyncio.create_task(token_queue.get())
                     pending.add(get_new_token)
                 if update_db_content in done:
                     update_db_content = None
-                if update_db_content is None and token_count % 3 == 0:
+                # Write the content of the message to the database every 3 seconds or 5 tokens.
+                if update_db_content is None and (
+                    time.monotonic() - db_last_update_time >= commit_time_limit
+                    or token_count % commit_token_limit == 0
+                ):
                     update_db_content = asyncio.create_task(
                         self._prisma_message.prisma().update(
                             data={"content": content},
@@ -109,14 +117,15 @@ class Message:
                         )
                     )
                     pending.add(update_db_content)
+                    db_last_update_time = time.monotonic()
 
         tasks = asyncio.create_task(task())
         try:
-            yield q
+            yield token_queue
         finally:
-            await q.put(None)
-            await tasks
-            await self._update_async({"content": tasks.result()}, None)
+            await token_queue.put(None)
+            current_content = await tasks
+            await self._update_async({"content": current_content}, None)
 
     @property
     def id(self) -> str:
