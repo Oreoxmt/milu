@@ -97,7 +97,7 @@ class Message:
                     new_token = get_new_token.result()
                     if new_token is None:
                         await self._tokens.put(None)
-                        return content
+                        break
                     content += new_token
                     token_count += 1
                     await self._tokens.put(new_token)
@@ -118,7 +118,9 @@ class Message:
                     )
                     pending.add(update_db_content)
                     db_last_update_time = time.monotonic()
-
+            if update_db_content is not None:
+                await update_db_content
+            return content
         tasks = asyncio.create_task(task())
         try:
             yield token_queue
