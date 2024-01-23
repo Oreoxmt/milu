@@ -29,6 +29,7 @@ async def main() -> None:
     async for token in assistant_message:
         print(f"(bot) Generated token: {token}")
     print(f"(bot) assistant_message after generating token: {assistant_message}")
+    await asyncio.sleep(30)
     await db_prisma.disconnect()
 
 
