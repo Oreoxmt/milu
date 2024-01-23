@@ -80,6 +80,7 @@ class Message:
 
         async def task():
             content = ""
+            token_count = 0
             get_new_token = asyncio.create_task(q.get())
             update_db_content = None
             pending = {get_new_token}
@@ -103,12 +104,13 @@ class Message:
                             self._prisma_message = current_mess
                         break
                     content += new_token
+                    token_count += 1
                     await self._tokens.put(new_token)
                     get_new_token = asyncio.create_task(q.get())
                     pending.add(get_new_token)
                 if update_db_content in done:
                     update_db_content = None
-                if update_db_content is None and len(content) % 1 == 0:
+                if update_db_content is None and token_count % 3 == 0:
                     update_db_content = asyncio.create_task(
                         self._prisma_message.prisma().update(
                             data={"content": content},
