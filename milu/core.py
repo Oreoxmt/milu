@@ -93,16 +93,7 @@ class Message:
                     new_token = get_new_token.result()
                     if new_token is None:
                         await self._tokens.put(None)
-                        await self._prisma_message.prisma().update(
-                            data={"content": content},
-                            where={"id": self.id},
-                        )
-                        current_mess = await self._prisma_message.prisma().find_unique(
-                            where={"id": self.id}
-                        )
-                        if current_mess is not None:
-                            self._prisma_message = current_mess
-                        break
+                        return content
                     content += new_token
                     token_count += 1
                     await self._tokens.put(new_token)
@@ -125,6 +116,7 @@ class Message:
         finally:
             await q.put(None)
             await tasks
+            await self._update_async({"content": tasks.result()}, None)
 
     @property
     def id(self) -> str:
