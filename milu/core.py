@@ -82,8 +82,8 @@ class Message:
         async def task():
             content = ""
             token_count = 0
-            commit_token_limit = 5
-            commit_time_limit = 3
+            COMMIT_TOKEN_LIMIT = 5
+            COMMIT_TIME_LIMIT = 3
             db_last_update_time = time.monotonic()
             get_new_token = asyncio.create_task(token_queue.get())
             update_db_content = None
@@ -107,8 +107,8 @@ class Message:
                     update_db_content = None
                 # Write the content of the message to the database every 3 seconds or 5 tokens.
                 if update_db_content is None and (
-                    time.monotonic() - db_last_update_time >= commit_time_limit
-                    or token_count % commit_token_limit == 0
+                    time.monotonic() - db_last_update_time >= COMMIT_TIME_LIMIT
+                    or token_count % COMMIT_TOKEN_LIMIT == 0
                 ):
                     update_db_content = asyncio.create_task(
                         self._prisma_message.prisma().update(
